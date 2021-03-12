@@ -7,6 +7,11 @@
 
 - [re2](https://github.com/google/re2)
 
+### 编译说明
+因项目结构过于简单，故暂不提供预编译版本与 CMakeList.txt 。
+下载 [ExMarkDown.cpp](./src/ExMarkDown.cpp)，请使用 `C++` 编译工具进行编译。
+编译参数：`-lre2`、`-std=c++14`、`-O2`。
+
 ### 项目起因
 
 Y7n05h 在撰写实验报告时苦于使用办公软件进行繁琐的文字编辑及排版工作，有由于 Tex 排版较为复杂，随即决定使用 CSS 渲染 MarkDown 生成 PDF 使其符合规定的样式。但因 MarkDown 无法解决图表题注的自动添加以及交叉引用问题，且人工完成该项工作十分繁琐，于是决定开发 ExMarkDown 扩充 MarkDown 部分语法。
