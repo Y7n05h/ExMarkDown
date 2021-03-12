@@ -1,5 +1,5 @@
 ## ExMarkDown
-
+![GitHub](https://img.shields.io/github/license/Y7n05h/ExMarkDown?style=flat-square)
 
 本项目希望提供一种工具，简化在 MarkDown 中的交叉引用与参考文献排版时的困难。
 
