@@ -16,6 +16,9 @@ Y7n05h 在撰写实验报告时苦于使用办公软件进行繁琐的文字编�
 本项目不涉及任何有关 MarkDown 渲染与解析的相关技术，本项目通过自定语法，在 MarkDown 渲染前通过文字处理，实现图表题注、交叉引用、章节序号、脚注顺序的自动修正。
 
 
+
 ### LICENSE
 
 本项目一切内容均使用 [GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.html) 发布。
+
+欢迎通过 Pull request 与 Issuse 对本项目的代码、设计、功能等方面提出建议。
