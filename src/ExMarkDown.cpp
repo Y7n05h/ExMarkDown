@@ -1,4 +1,5 @@
 #include <array>
+#include <bitset>
 #include <cassert>
 #include <cctype>
 #include <cstdlib>
@@ -9,6 +10,8 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+bool options_f = false;
+int target = 0;
 #define select(x, y)                              \
     do                                            \
     {                                             \
@@ -175,13 +178,14 @@ class Line
     static const RE2 title;
     static const RE2 ref;
     static const RE2 tmpstatus;
+    static const RE2 escape;
     std::vector<int> indexstack;
-    std::array<bool, 6> flag;
+    std::bitset<6> flag;
     int level = 0;
     friend std::ofstream &operator<<(std::ofstream &s, const Line &t);
 
 public:
-    Line(const std::string &path, const std::array<bool, 6> t) : s(path), flag(t)
+    Line(const std::string &path, const std::bitset<6> t) : s(path), flag(t)
     {
     }
     void getline()
@@ -246,6 +250,8 @@ public:
     }
     void addNum(int level)
     {
+        if (level == 0)
+            return;
         if (level > indexstack.size())
         {
             do
@@ -264,7 +270,7 @@ public:
             addNum(std::to_string(idx));
         }
     }
-    void setflag(const std::array<bool, 6> &t)
+    void setflag(const std::bitset<6> &t)
     {
         flag = t;
     }
@@ -297,6 +303,12 @@ public:
         } while (re2::RE2::Extract(buf, ref, R"(\1)", &tmp));
         re2::RE2::GlobalReplace(&buf, tmpstatus, R"([\2])");
     }
+    void fixescape()
+    {
+        if (!target)
+            return;
+        re2::RE2::GlobalReplace(&buf, escape, R"(@@)");
+    }
 };
 const RE2 Line::checkCode(R"(^```)");
 const RE2 Line::discover(R"(^\s*@@([FTP].{0,50}?)@@$)");
@@ -304,6 +316,7 @@ const RE2 Line::quote(R"(@@([ftp].{0,50}?)@@)");
 const RE2 Line::ref(R"(\[(\d+)\])");
 const RE2 Line::title(R"(^(#{1,6})\s)");
 const RE2 Line::tmpstatus(R"((>@<(\d+)>@<))");
+const RE2 Line::escape(R"(\\@\\@)");
 
 std::ofstream &operator<<(std::ofstream &s, const Line &t)
 {
@@ -311,7 +324,7 @@ std::ofstream &operator<<(std::ofstream &s, const Line &t)
     return s;
 }
 
-void process(const std::string &path, const std::string &newpath, const std::array<bool, 6> &flag, const int target)
+void process(const std::string &path, const std::string &newpath, const std::bitset<6> &flag)
 {
     Caption picture("图");
     Caption table("表");
@@ -325,22 +338,25 @@ void process(const std::string &path, const std::string &newpath, const std::arr
         if (line.checkCodeSegment())
             continue;
         line.findReference();
-        int level = line.findtitle();
-        if (level != 0)
+        if (target)
         {
-            if (level == target)
+            int level = line.findtitle();
+            if (level != 0)
             {
-                picture.update();
-                table.update();
-                formula.update();
+                if (level == target)
+                {
+                    picture.update();
+                    table.update();
+                    formula.update();
+                }
+                else if (level < target)
+                {
+                    picture.reset();
+                    table.reset();
+                    formula.reset();
+                }
+                continue;
             }
-            else if (level < target)
-            {
-                picture.reset();
-                table.reset();
-                formula.reset();
-            }
-            continue;
         }
         std::string tmp;
         char rc = line.findCaption(&tmp);
@@ -362,9 +378,7 @@ void process(const std::string &path, const std::string &newpath, const std::arr
             newfile << line << std::endl;
             continue;
         }
-        int level;
-        if ((level = line.findtitle()))
-            line.addNum(level);
+        line.addNum(line.findtitle());
         std::string tmp;
         char rc = line.findCaption(&tmp);
         if (rc != 0)
@@ -373,8 +387,7 @@ void process(const std::string &path, const std::string &newpath, const std::arr
             Caption *pr;
             select(rc, pr);
             pr->serial(&buf, tmp);
-            newfile << buf << std::endl;
-            continue;
+            goto end;
         }
         while ((rc = line.findquote(&tmp)) != 0)
         {
@@ -384,6 +397,8 @@ void process(const std::string &path, const std::string &newpath, const std::arr
             pr->quote(&buf, tmp);
             line.replace(buf);
         }
+    end:
+        line.fixescape();
         newfile << line << std::endl;
     }
 }
@@ -401,9 +416,10 @@ void newfilepath(const std::string &path, std::string *newpath)
 }
 int main(int argc, char **argv)
 {
-    if (argc < 2)
+    if (argc <= 2)
     {
-        std::cerr << "本程序希望解决 MarkDown 排版时繁琐的交叉引用、图注添加，参考文献排序问题。-h 查看帮助。";
+        std::cerr << "本程序希望解决 MarkDown 排版时繁琐的交叉引用、图注添加，参考文献排序问题。"
+                  << "更多说明请查询 https://github.com/Y7n05h/ExMarkDown " << std::endl;
     }
     std::string path(argv[1]);
     if (!filecheck(path))
@@ -413,9 +429,29 @@ int main(int argc, char **argv)
     }
     std::string newpath;
     newfilepath(path, &newpath);
-    std::array<bool, 6> flag;
-    flag[2] = true;
-    flag[3] = true;
-    flag[4] = true;
-    process(path, newpath, flag, atoi(argv[2]));
+    std::bitset<6> flag;
+    {
+        RE2 fix(R"(-f|--fix)");
+        RE2 title(R"(-t(\d{1,6}))");
+        RE2 quote(R"(-q(\d))");
+        assert(fix.ok());
+        assert(title.ok());
+        assert(quote.ok());
+        std::string tmp;
+        for (int i = 2; i < argc; i++)
+            tmp += argv[i];
+        options_f = re2::RE2::PartialMatch(tmp, fix);
+        std::string buf;
+        if (re2::RE2::Extract(tmp, title, R"(\1)", &buf))
+        {
+            for (auto i : buf)
+                flag[i - '1'] = true;
+        }
+        if (re2::RE2::Extract(tmp, title, R"(\1)", &buf))
+        {
+            target = buf[0] - '0';
+        }
+    }
+
+    process(path, newpath, flag);
 }
