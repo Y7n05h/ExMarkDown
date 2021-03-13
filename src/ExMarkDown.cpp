@@ -11,6 +11,8 @@
 #include <unordered_map>
 #include <vector>
 bool options_f = false;
+bool options_t = false;
+std::bitset<6> flag;
 int target = 0;
 #define select(x, y)                              \
     do                                            \
@@ -180,12 +182,11 @@ class Line
     static const RE2 tmpstatus;
     static const RE2 escape;
     std::vector<int> indexstack;
-    std::bitset<6> flag;
     int level = 0;
     friend std::ofstream &operator<<(std::ofstream &s, const Line &t);
 
 public:
-    Line(const std::string &path, const std::bitset<6> t) : s(path), flag(t)
+    explicit Line(const std::string &path) : s(path)
     {
     }
     void getline()
@@ -270,12 +271,10 @@ public:
             addNum(std::to_string(idx));
         }
     }
-    void setflag(const std::bitset<6> &t)
-    {
-        flag = t;
-    }
     void findReference()
     {
+        if (!options_f)
+            return;
         std::string copy = buf;
         static int order = 0;
         std::string tmp;
@@ -292,6 +291,8 @@ public:
     }
     void fixReference()
     {
+        if (!options_f)
+            return;
         std::string tmp;
         if (!re2::RE2::Extract(buf, ref, R"(\1)", &tmp))
             return;
@@ -324,13 +325,13 @@ std::ofstream &operator<<(std::ofstream &s, const Line &t)
     return s;
 }
 
-void process(const std::string &path, const std::string &newpath, const std::bitset<6> &flag)
+void process(const std::string &path, const std::string &newpath)
 {
     Caption picture("图");
     Caption table("表");
     Caption formula("公式");
 
-    Line line(path, flag);
+    Line line(path);
 
     while (line.good())
     {
@@ -338,33 +339,33 @@ void process(const std::string &path, const std::string &newpath, const std::bit
         if (line.checkCodeSegment())
             continue;
         line.findReference();
+        int level = line.findtitle();
+        if (level != 0)
+        {
+            if (level == target)
+            {
+                picture.update();
+                table.update();
+                formula.update();
+            }
+            else if (level < target)
+            {
+                picture.reset();
+                table.reset();
+                formula.reset();
+            }
+            continue;
+        }
         if (target)
         {
-            int level = line.findtitle();
-            if (level != 0)
-            {
-                if (level == target)
-                {
-                    picture.update();
-                    table.update();
-                    formula.update();
-                }
-                else if (level < target)
-                {
-                    picture.reset();
-                    table.reset();
-                    formula.reset();
-                }
+            std::string tmp;
+            char rc = line.findCaption(&tmp);
+            if (rc == 0)
                 continue;
-            }
+            Caption *pr;
+            select(rc, pr);
+            pr->insert(std::move(tmp));
         }
-        std::string tmp;
-        char rc = line.findCaption(&tmp);
-        if (rc == 0)
-            continue;
-        Caption *pr;
-        select(rc, pr);
-        pr->insert(std::move(tmp));
     }
     line.redo();
 
@@ -372,12 +373,12 @@ void process(const std::string &path, const std::string &newpath, const std::bit
     while (line.good())
     {
         line.getline();
-        line.fixReference();
         if (line.checkCodeSegment())
         {
             newfile << line << std::endl;
             continue;
         }
+        line.fixReference();
         line.addNum(line.findtitle());
         std::string tmp;
         char rc = line.findCaption(&tmp);
@@ -387,7 +388,9 @@ void process(const std::string &path, const std::string &newpath, const std::bit
             Caption *pr;
             select(rc, pr);
             pr->serial(&buf, tmp);
-            goto end;
+            newfile << buf << std::endl;
+            line.fixescape();
+            continue;
         }
         while ((rc = line.findquote(&tmp)) != 0)
         {
@@ -397,7 +400,6 @@ void process(const std::string &path, const std::string &newpath, const std::bit
             pr->quote(&buf, tmp);
             line.replace(buf);
         }
-    end:
         line.fixescape();
         newfile << line << std::endl;
     }
@@ -429,10 +431,10 @@ int main(int argc, char **argv)
     }
     std::string newpath;
     newfilepath(path, &newpath);
-    std::bitset<6> flag;
+
     {
         RE2 fix(R"(-f|--fix)");
-        RE2 title(R"(-t(\d{1,6}))");
+        RE2 title(R"(-t ?(\d{1,6}))");
         RE2 quote(R"(-q(\d))");
         assert(fix.ok());
         assert(title.ok());
@@ -444,14 +446,15 @@ int main(int argc, char **argv)
         std::string buf;
         if (re2::RE2::Extract(tmp, title, R"(\1)", &buf))
         {
+            options_t = true;
             for (auto i : buf)
                 flag[i - '1'] = true;
         }
-        if (re2::RE2::Extract(tmp, title, R"(\1)", &buf))
+        if (re2::RE2::Extract(tmp, quote, R"(\1)", &buf))
         {
             target = buf[0] - '0';
         }
     }
 
-    process(path, newpath, flag);
+    process(path, newpath);
 }
